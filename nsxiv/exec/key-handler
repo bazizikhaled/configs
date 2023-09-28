@@ -1,0 +1,139 @@
+#!/bin/bash
+
+
+
+
+# Function to open a directory in nsxiv
+open_directory_with_nsxiv() {
+    directory="$1"
+    nsxiv "$directory" &
+}
+
+# Define a function to select an image directory
+select_image_directory() {
+    # List of image directories (adjust as needed)
+    image_directories=(
+        "$HOME/Pictures"
+        "$HOME/media/Pictures"
+        # Add more directories as needed
+    )
+
+    # Prepare the list of directories with newline separators
+    dir_list=$(printf "%s\n" "${image_directories[@]}")
+
+    # Prompt to select a directory using dmenu
+    selected_directory=$(echo "$dir_list" | dmenu -i -p "Select image directory:" -l 10)
+
+    # Check if a directory was selected
+    if [ -n "$selected_directory" ]; then
+        open_directory_with_nsxiv "$selected_directory"
+    else
+        herbe "No directory selected."
+    fi
+}
+
+
+
+
+
+declare -a destination_dirs=(
+    "$HOME/Pictures"
+    "$HOME/media/Pictures"
+    # Add more directories here as needed
+)
+destination_options=$(printf "%s\n" "${destination_dirs[@]}")
+
+
+
+case "$1" in
+    "C-d") # Delete image
+	        while read file;
+	do
+	[ "$(printf "No\\nYes" | dmenu -i -p "Really delete $file?")" = "Yes" ] && rm "$file" && herbe "$file deleted." 
+	done
+	;;
+    "C-p") # Copy path of picture
+        while read file;
+	do
+        echo -n "$file" | xclip -selection clipboard
+	done
+        ;;
+    "C-c") # Copy picture to clipboard
+        while read file;
+	do
+	xclip -selection clipboard -t image/png -i "$file"
+        done
+	;;
+     "C-m") # Move image to a specified directory
+action=$(echo -e "Copy\nMove" | dmenu -i -p "Choose action:")
+
+if [ "$action" = "Copy" ]; then
+    action_cmd="cp"
+elif [ "$action" = "Move" ]; then
+    action_cmd="mv"
+else
+    herbe "Invalid action."
+    exit 1
+fi
+
+# Prompt for the destination directory
+destination_dir=$(echo -e "Pictures\nmedia/Pictures" | dmenu -i -p "Copy/Move images to:")
+
+if [ "$destination_dir" = "Pictures" ]; then
+    target_dir="$HOME/Pictures"
+elif [ "$destination_dir" = "media/Pictures" ]; then
+    target_dir="$HOME/media/Pictures"
+else
+    herbe "Invalid destination directory."
+    exit 1
+fi
+
+# Loop over selected images
+while read file;
+do
+    current_image="$file"
+
+    if [ -n "$target_dir" ]; then
+        file_name=$(basename "$file")
+
+        $action_cmd "$file" "$target_dir/$file_name"
+        herbe "$file_name $action'd to $target_dir."
+    else
+        herbe "Invalid destination directory."
+    fi
+done
+
+;;
+"C-i") # View image information
+while read file;
+do
+    info=$(identify -format "Image: %f\nSize: %b\nDimensions: %w x %h\nFormat: %m" "$file")
+
+    herbe "$info"
+done
+
+	 ;;
+    "C-r") # Rename image
+        while read file;
+	do 
+       current_image="$file"
+
+        dir_path=$(dirname "$current_image")
+        original_name=$(basename "$current_image")
+
+        new_name=$(echo "$original_name" | dmenu -i -p "Enter new filename:")
+
+        if [ -n "$new_name" ]; then
+            mv "$current_image" "$dir_path/$new_name"
+            herbe "$original_name renamed to $new_name."
+        else
+            herbe "No new filename provided. Image not renamed."
+        fi
+	done
+        ;;
+
+    "C-l") # Open image directory with nsxiv
+        select_image_directory
+        ;;
+esac
+
