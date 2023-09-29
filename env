@@ -1,0 +1,16 @@
+#XDG define
+export XDG_CONFIG_HOME=~/.config
+export XDG_CACHE_HOME=~/.cache
+export XDG_DATA_HOME=~/.local/share
+export XDG_STATE_HOME=~/.local/state
+export PATH=$PATH:~/.local/bin
+
+
+
+#clean up $HOME
+export HISTFILE="$XDG_STATE_HOME"/zsh/history/.histfile
+export ZDOTDIR="$HOME"/.config/zsh/
+export GOPATH="$XDG_DATA_HOME"/go
+export GNUPGHOME="$XDG_DATA_HOME"/gnupg
+export NPM_CONFIG_USERCONFIG="$XDG_CONFIG_HOME"/npm/npmrc
+export PASSWORD_STORE_DIR="$XDG_DATA_HOME"/pass
