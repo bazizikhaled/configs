@@ -208,6 +208,7 @@ static void tdefutf8(char);
 static int32_t tdefcolor(const int *, int *, int);
 static void tdeftran(char);
 static void tstrsequence(uchar);
+static const char *findlastany(const char *, const char**, size_t);
 
 static void drawregion(int, int, int, int);
 
@@ -725,14 +726,8 @@ sigchld(int a)
 	if ((p = waitpid(pid, &stat, WNOHANG)) < 0)
 		die("waiting for pid %hd failed: %s\n", pid, strerror(errno));
 
-	if (pid != p) {
-		if (p == 0 && wait(&stat) < 0)
-			die("wait: %s\n", strerror(errno));
-
-		/* reinstall sigchld handler */
-		signal(SIGCHLD, sigchld);
+	if (pid != p)
 		return;
-	}
 
 	if (WIFEXITED(stat) && WEXITSTATUS(stat))
 		die("child exited with status %d\n", WEXITSTATUS(stat));
@@ -816,7 +811,7 @@ ttynew(const char *line, char *cmd, const char *out, char **args)
 		break;
 	default:
 #ifdef __OpenBSD__
-		if (pledge("stdio rpath tty proc", NULL) == -1)
+		if (pledge("stdio rpath tty proc exec", NULL) == -1)
 			die("pledge\n");
 #endif
 		close(s);
@@ -1059,6 +1054,11 @@ tnew(int col, int row)
 	treset();
 }
 
+int tisaltscr(void)
+{
+	return IS_SET(MODE_ALTSCREEN);
+}
+
 void
 tswapscreen(void)
 {
@@ -1110,13 +1110,13 @@ tscrolldown(int orig, int n, int copyhist)
 	Line temp;
 
 	LIMIT(n, 0, term.bot-orig+1);
-
 	if (copyhist) {
 		term.histi = (term.histi - 1 + HISTSIZE) % HISTSIZE;
 		temp = term.hist[term.histi];
 		term.hist[term.histi] = term.line[term.bot];
 		term.line[term.bot] = temp;
 	}
+
 
 	tsetdirt(orig, term.bot-n);
 	tclearregion(0, term.bot-n+1, term.col-1, term.bot);
@@ -1165,7 +1165,7 @@ tscrollup(int orig, int n, int copyhist)
 void
 selscroll(int orig, int n)
 {
-	if (sel.ob.x == -1)
+	if (sel.ob.x == -1 || sel.alt != IS_SET(MODE_ALTSCREEN))
 		return;
 
 	if (BETWEEN(sel.nb.y, orig, term.bot) != BETWEEN(sel.ne.y, orig, term.bot)) {
@@ -1283,6 +1283,9 @@ tsetchar(Rune u, const Glyph *attr, int x, int y)
 	term.dirty[y] = 1;
 	term.line[y][x] = *attr;
 	term.line[y][x].u = u;
+
+	if (isboxdraw(u))
+		term.line[y][x].mode |= ATTR_BOXDRAW;
 }
 
 void
@@ -2059,59 +2062,6 @@ strparse(void)
 }
 
 void
-externalpipe(const Arg *arg)
-{
-	int to[2];
-	char buf[UTF_SIZ];
-	void (*oldsigpipe)(int);
-	Glyph *bp, *end;
-	int lastpos, n, newline;
-
-	if (pipe(to) == -1)
-		return;
-
-	switch (fork()) {
-	case -1:
-		close(to[0]);
-		close(to[1]);
-		return;
-	case 0:
-		dup2(to[0], STDIN_FILENO);
-		close(to[0]);
-		close(to[1]);
-		execvp(((char **)arg->v)[0], (char **)arg->v);
-		fprintf(stderr, "st: execvp %s\n", ((char **)arg->v)[0]);
-		perror("failed");
-		exit(0);
-	}
-
-	close(to[0]);
-	/* ignore sigpipe for now, in case child exists early */
-	oldsigpipe = signal(SIGPIPE, SIG_IGN);
-	newline = 0;
-	for (n = 0; n < term.row; n++) {
-		bp = term.line[n];
-		lastpos = MIN(tlinelen(n) + 1, term.col) - 1;
-		if (lastpos < 0)
-			break;
-		end = &bp[lastpos + 1];
-		for (; bp < end; ++bp)
-			if (xwrite(to[1], buf, utf8encode(bp->u, buf)) < 0)
-				break;
-		if ((newline = term.line[n][lastpos].mode & ATTR_WRAP))
-			continue;
-		if (xwrite(to[1], "\n", 1) < 0)
-			break;
-		newline = 0;
-	}
-	if (newline)
-		(void)xwrite(to[1], "\n", 1);
-	close(to[1]);
-	/* restore */
-	signal(SIGPIPE, oldsigpipe);
-}
-
-void
 strdump(void)
 {
 	size_t i;
@@ -2451,6 +2401,7 @@ eschandle(uchar ascii)
 		treset();
 		resettitle();
 		xloadcols();
+		xsetmode(0, MODE_HIDE);
 		break;
 	case '=': /* DECPAM -- Application keypad */
 		xsetmode(1, MODE_APPKEYPAD);
@@ -2598,7 +2549,10 @@ check_control_code:
 	}
 
 	if (term.c.x+width > term.col) {
-		tnewline(1);
+		if (IS_SET(MODE_WRAP))
+			tnewline(1);
+		else
+			tmoveto(term.col - width, term.c.y);
 		gp = &term.line[term.c.y][term.c.x];
 	}
 
@@ -2797,4 +2751,93 @@ redraw(void)
 {
 	tfulldirt();
 	draw();
+}
+
+const char *
+findlastany(const char *str, const char**find, size_t len)
+{
+	const char *found = NULL;
+	int i = 0;
+
+	for (found = str + strlen(str) - 1; found >= str; --found) {
+		for(i = 0; i < len; i++) {
+			if (strncmp(found, find[i], strlen(find[i])) == 0) {
+				return found;
+			}
+		}
+	}
+
+	return NULL;
+}
+
+/*
+** Select and copy the previous url on screen (do nothing if there's no url).
+**
+** FIXME: doesn't handle urls that span multiple lines; will need to add support
+**        for multiline "getsel()" first
+*/
+void
+copyurl(const Arg *arg) {
+	/* () and [] can appear in urls, but excluding them here will reduce false
+	 * positives when figuring out where a given url ends.
+	 */
+	static const char URLCHARS[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+		"abcdefghijklmnopqrstuvwxyz"
+		"0123456789-._~:/?#@!$&'*+,;=%";
+
+	static const char* URLSTRINGS[] = {"www.","http://", "https://"};
+
+	int row = 0, /* row of current URL */
+		col = 0, /* column of current URL start */
+		colend = 0, /* column of last occurrence */
+		passes = 0; /* how many rows have been scanned */
+
+	char linestr[term.col + 1];
+	const char *c = NULL,
+		 *match = NULL;
+
+	row = (sel.ob.x >= 0 && sel.nb.y > 0) ? sel.nb.y : term.bot;
+	LIMIT(row, term.top, term.bot);
+
+	colend = (sel.ob.x >= 0 && sel.nb.y > 0) ? sel.nb.x : term.col;
+	LIMIT(colend, 0, term.col);
+
+	/*
+	** Scan from (term.row - 1,term.col - 1) to (0,0) and find
+	** next occurrance of a URL
+	*/
+	for (passes = 0; passes < term.row; passes++) {
+		/* Read in each column of every row until
+		** we hit previous occurrence of URL
+		*/
+		for (col = 0; col < colend; ++col)
+			linestr[col] = term.line[row][col].u < 128 ? term.line[row][col].u : ' ';
+		linestr[col] = '\0';
+
+		if ((match = findlastany(linestr, URLSTRINGS,
+						sizeof(URLSTRINGS)/sizeof(URLSTRINGS[0]))))
+			break;
+
+        /* .i = 0 --> botton-up
+         * .i = 1 --> top-down
+         * */
+        if (!arg->i) {
+            if (--row < 0)
+                row = term.row - 1;
+        } else {
+            if (++row >= term.row)
+                row = 0;
+        }
+
+		colend = term.col;
+	};
+
+	if (match) {
+		size_t l = strspn(match, URLCHARS);
+		selstart(match - linestr, row, 0);
+		selextend(match - linestr + l - 1, row, SEL_REGULAR, 0);
+		selextend(match - linestr + l - 1, row, SEL_REGULAR, 1);
+		xsetsel(getsel());
+		xclipcopy();
+	}
 }
