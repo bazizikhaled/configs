@@ -4,28 +4,28 @@ Welcome to the "configs" repository! This is a collection of my configuration fi
 
 ## Configurations Included
 
-1. [Zathura](zathura/README.md)
+1. [Zathura](zathura)
    - Lightweight document viewer.
 
-2. [LF (Terminal File Manager)](lf/README.md)
+2. [LF (Terminal File Manager)](lf)
    - Simple and powerful terminal file manager.
 
-3. [Zsh (Z Shell)](zsh/README.md)
+3. [Zsh (Z Shell)](zsh)
    - Powerful and feature-rich shell.
 
-4. [ST (Simple Terminal)](st/README.md)
+4. [ST (Simple Terminal)](st)
    - Minimalistic terminal emulator.
 
-5. [Sent (Simple Presentation Tool)](sent/README.md)
+5. [Sent (Simple Presentation Tool)](sent)
    - Plain text presentation tool.
 
-6. [MPV (Media Player)](mpv/README.md)
+6. [MPV (Media Player)](mpv)
    - Versatile media player.
 
-7. [Neovim (Nvim)](nvim/README.md)
+7. [Neovim (Nvim)](nvim)
    - Improved version of Vim.
 
-8. [Nsxiv (Image viewer)](nvim/README.md)
+8. [Nsxiv (Image viewer)](nvim)
    - Extensible image viewer.
 
 

@@ -2785,7 +2785,7 @@ copyurl(const Arg *arg) {
 		"abcdefghijklmnopqrstuvwxyz"
 		"0123456789-._~:/?#@!$&'*+,;=%";
 
-	static const char* URLSTRINGS[] = {"www.","http://", "https://"};
+	static const char* URLSTRINGS[] = {"localhost:","www.","http://", "https://"};
 
 	int row = 0, /* row of current URL */
 		col = 0, /* column of current URL start */
